@@ -82,17 +82,18 @@ class RenderTests(unittest.TestCase):
         self.assertIn("| --- | --- | --- | ---: |", text)
         self.assertEqual(text.count("| 仓库 | 简介 | 语言 | Stars |"), 2)
         self.assertIn(
-            "| [octocat/hello](https://github.com/octocat/hello) | Hello | Go | ★ 12 |",
+            "| [octocat/hello](https://github.com/octocat/hello) | Hello | Go | 12 |",
             text,
         )
         self.assertIn("| [pytorch/pytorch](https://github.com/pytorch/pytorch) |", text)
-        self.assertIn("| Python | ★ 90,000 |", text)
+        self.assertIn("| Python | 90,000 |", text)
         self.assertIn(
-            "| [huggingface/transformers](https://github.com/huggingface/transformers) |  | - | ★ 1,000 |",
+            "| [huggingface/transformers](https://github.com/huggingface/transformers) |  | - | 1,000 |",
             text,
         )
         self.assertNotIn("img.shields.io", text)
         self.assertNotIn("![", text)
+        self.assertNotIn("★", text)
         self.assertNotRegex(text, r"(?m)^- \[[^\]]+/[^\]]+\]\(https://github.com/")
         self.assertIn("&lt;draft&gt;", text)
         self.assertNotIn("<draft>", text)
@@ -143,17 +144,17 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(len(cells), 4)
         self.assertEqual(cells[1], "left \\| right next &lt;b&gt; &amp; more")
         self.assertEqual(cells[2], "C++")
-        self.assertEqual(cells[3], "★ 3")
+        self.assertEqual(cells[3], "3")
         csharp = next(line for line in text.splitlines() if "acme/csharp" in line)
         csharp_cells = [cell.strip() for cell in re.split(r"(?<!\\)\|", csharp.strip())[1:-1]]
         self.assertEqual(csharp_cells[2], "C#")
-        self.assertEqual(csharp_cells[3], "★ 4")
+        self.assertEqual(csharp_cells[3], "4")
         self.assertIn("path\\\\to\\\\file", text)
         objc = next(line for line in text.splitlines() if "acme/objc" in line)
         objc_cells = [cell.strip() for cell in re.split(r"(?<!\\)\|", objc.strip())[1:-1]]
         self.assertEqual(objc_cells[1], "")
         self.assertEqual(objc_cells[2], "Objective-C")
-        self.assertEqual(objc_cells[3], "★ 5")
+        self.assertEqual(objc_cells[3], "5")
         self.assertNotIn("\nnext", text)
         self.assertNotIn("<b>", text)
         self.assertNotIn("img.shields.io", text)
@@ -164,12 +165,13 @@ class RenderTests(unittest.TestCase):
         self.assertIn("| 仓库 | 简介 | 语言 | Stars |", text)
         self.assertIn("| --- | --- | --- | ---: |", text)
         self.assertIn(
-            "| [owner/repo](https://github.com/owner/repo) | 仓库简介 | Python | ★ 1,234 |",
+            "| [owner/repo](https://github.com/owner/repo) | 仓库简介 | Python | 1,234 |",
             text,
         )
         self.assertIn("- [如何更新 / Setup](#setup)", text)
         self.assertNotIn("img.shields.io", text)
         self.assertNotIn("![", text)
+        self.assertNotIn("★", text)
 
     def test_count_sort_is_stable(self) -> None:
         ordered = sync.order_lists(sample_lists(), "count")
@@ -319,11 +321,11 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(rendered.count("| 仓库 | 简介 | 语言 | Stars |"), 1)
         self.assertIn("（此列表暂无公开仓库 / No public repositories in this list.）", rendered)
         self.assertIn(
-            "| [owner/public](https://github.com/owner/public) | Shown | Python | ★ 3 |",
+            "| [owner/public](https://github.com/owner/public) | Shown | Python | 3 |",
             rendered,
         )
         self.assertIn(
-            "| [owner/more](https://github.com/owner/more) | Next page | - | ★ 8 |",
+            "| [owner/more](https://github.com/owner/more) | Next page | - | 8 |",
             rendered,
         )
         self.assertNotIn("img.shields.io", rendered)
@@ -442,7 +444,7 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(code, 0)
                 self.assertEqual(path.read_text(encoding="utf-8"), "keep\n")
                 self.assertIn(
-                    "| [a/b](https://github.com/a/b) | Hi | Rust | ★ 2 |",
+                    "| [a/b](https://github.com/a/b) | Hi | Rust | 2 |",
                     stdout.getvalue(),
                 )
                 self.assertNotIn("img.shields.io", stdout.getvalue())
@@ -481,7 +483,7 @@ class CliTests(unittest.TestCase):
                 written = path.read_text(encoding="utf-8")
                 self.assertIn("## Tools", written)
                 self.assertIn(
-                    "| [a/b](https://github.com/a/b) | Hi | Rust | ★ 2 |",
+                    "| [a/b](https://github.com/a/b) | Hi | Rust | 2 |",
                     written,
                 )
                 self.assertNotIn("img.shields.io", written)
