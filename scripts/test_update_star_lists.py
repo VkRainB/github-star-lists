@@ -6,6 +6,7 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import re
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -77,21 +78,108 @@ class RenderTests(unittest.TestCase):
         self.assertIn("[VkRainB](https://github.com/VkRainB)", text)
         self.assertIn("- [机器学习](#ml)（2 · 私有）", text)
         self.assertIn("- [小清单](#small)（1）", text)
+        self.assertIn("| 仓库 | 简介 | 语言 | Stars |", text)
+        self.assertIn("| --- | --- | --- | ---: |", text)
+        self.assertEqual(text.count("| 仓库 | 简介 | 语言 | Stars |"), 2)
         self.assertIn(
-            "- [octocat/hello](https://github.com/octocat/hello) — Hello · Go · ★ 12",
+            "| [octocat/hello](https://github.com/octocat/hello) | Hello | "
+            "![Go](https://img.shields.io/badge/Go-blue?style=flat-square&logoColor=white) | "
+            "![Stars](https://img.shields.io/github/stars/octocat/hello?style=flat-square) |",
             text,
         )
-        self.assertIn("· Python · ★ 90,000", text)
         self.assertIn(
-            "- [huggingface/transformers](https://github.com/huggingface/transformers) · ★ 1,000",
+            "![Python](https://img.shields.io/badge/Python-blue?style=flat-square&logoColor=white)",
             text,
         )
+        self.assertIn(
+            "![Stars](https://img.shields.io/github/stars/pytorch/pytorch?style=flat-square)",
+            text,
+        )
+        self.assertIn(
+            "| [huggingface/transformers](https://github.com/huggingface/transformers) |  | - | "
+            "![Stars](https://img.shields.io/github/stars/huggingface/transformers?style=flat-square) |",
+            text,
+        )
+        self.assertNotIn("★", text)
+        self.assertNotRegex(text, r"(?m)^- \[[^\]]+/[^\]]+\]\(https://github.com/")
         self.assertIn("&lt;draft&gt;", text)
         self.assertNotIn("<draft>", text)
         self.assertIn("已省略 2 个私有仓库", text)
         self.assertIn("STAR_LISTS_TOKEN", text)
         self.assertIn("`read:user`", text)
         self.assertIn("GITHUB_TOKEN", text)
+
+    def test_shields_badge_label_encodes_symbols(self) -> None:
+        self.assertEqual(sync.shields_badge_label("Python"), "Python")
+        self.assertEqual(sync.shields_badge_label("C++"), "C%2B%2B")
+        self.assertEqual(sync.shields_badge_label("C#"), "C%23")
+        self.assertEqual(sync.shields_badge_label("Objective-C"), "Objective--C")
+        self.assertEqual(sync.shields_badge_label("Objective-C++"), "Objective--C%2B%2B")
+        self.assertEqual(sync.shields_badge_label("Jupyter Notebook"), "Jupyter%20Notebook")
+        self.assertEqual(sync.shields_badge_label("Foo_Bar"), "Foo__Bar")
+
+    def test_table_escapes_pipes_newlines_and_markup(self) -> None:
+        text = sync.render_readme(
+            "VkRainB",
+            [
+                {
+                    "name": "边界",
+                    "slug": "edge",
+                    "description": "列表说明不在表格里",
+                    "is_private": False,
+                    "items": [
+                        {
+                            "name_with_owner": "acme/cpp",
+                            "url": "https://github.com/acme/cpp",
+                            "description": "left | right\nnext <b> & more",
+                            "stargazer_count": 3,
+                            "language": "C++",
+                        },
+                        {
+                            "name_with_owner": "acme/csharp",
+                            "url": "https://github.com/acme/csharp",
+                            "description": "path\\to\\file",
+                            "stargazer_count": 4,
+                            "language": "C#",
+                        },
+                        {
+                            "name_with_owner": "acme/objc",
+                            "url": "https://github.com/acme/objc",
+                            "description": "",
+                            "stargazer_count": 5,
+                            "language": "Objective-C",
+                        },
+                    ],
+                    "omitted_private": 0,
+                }
+            ],
+            UPDATED,
+        )
+        cpp = next(line for line in text.splitlines() if "acme/cpp" in line)
+        cells = [cell.strip() for cell in re.split(r"(?<!\\)\|", cpp.strip())[1:-1]]
+        self.assertEqual(len(cells), 4)
+        self.assertEqual(cells[1], "left \\| right next &lt;b&gt; &amp; more")
+        self.assertIn("badge/C%2B%2B-blue?style=flat-square&logoColor=white", cells[2])
+        self.assertIn("github/stars/acme/cpp?style=flat-square", cells[3])
+        self.assertIn("badge/C%23-blue?style=flat-square&logoColor=white", text)
+        self.assertIn("path\\\\to\\\\file", text)
+        self.assertIn("badge/Objective--C-blue?style=flat-square&logoColor=white", text)
+        self.assertNotIn("\nnext", text)
+        self.assertNotIn("<b>", text)
+
+    def test_placeholder_example_is_a_badge_table(self) -> None:
+        text = sync.render_readme("VkRainB", [], UPDATED, placeholder=True)
+        self.assertIn("列表尚未同步", text)
+        self.assertIn("| 仓库 | 简介 | 语言 | Stars |", text)
+        self.assertIn("| --- | --- | --- | ---: |", text)
+        self.assertIn(
+            "| [owner/repo](https://github.com/owner/repo) | 仓库简介 | "
+            "![Python](https://img.shields.io/badge/Python-blue?style=flat-square&logoColor=white) | "
+            "![Stars](https://img.shields.io/github/stars/owner/repo?style=flat-square) |",
+            text,
+        )
+        self.assertIn("- [如何更新 / Setup](#setup)", text)
+        self.assertNotIn("★", text)
 
     def test_count_sort_is_stable(self) -> None:
         ordered = sync.order_lists(sample_lists(), "count")
@@ -238,6 +326,17 @@ class FetchTests(unittest.TestCase):
         self.assertNotIn("owner/secret", rendered)
         self.assertIn("owner/public", rendered)
         self.assertIn("owner/more", rendered)
+        self.assertEqual(rendered.count("| 仓库 | 简介 | 语言 | Stars |"), 1)
+        self.assertIn("（此列表暂无公开仓库 / No public repositories in this list.）", rendered)
+        self.assertIn(
+            "https://img.shields.io/badge/Python-blue?style=flat-square&logoColor=white",
+            rendered,
+        )
+        self.assertIn(
+            "| [owner/more](https://github.com/owner/more) | Next page | - | "
+            "![Stars](https://img.shields.io/github/stars/owner/more?style=flat-square) |",
+            rendered,
+        )
 
 
 def fake_lists_response() -> dict:
@@ -353,7 +452,9 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(code, 0)
                 self.assertEqual(path.read_text(encoding="utf-8"), "keep\n")
                 self.assertIn(
-                    "- [a/b](https://github.com/a/b) — Hi · Rust · ★ 2",
+                    "| [a/b](https://github.com/a/b) | Hi | "
+                    "![Rust](https://img.shields.io/badge/Rust-blue?style=flat-square&logoColor=white) | "
+                    "![Stars](https://img.shields.io/github/stars/a/b?style=flat-square) |",
                     stdout.getvalue(),
                 )
                 self.assertIn("dry-run", stderr.getvalue())
@@ -390,7 +491,12 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(code, 0)
                 written = path.read_text(encoding="utf-8")
                 self.assertIn("## Tools", written)
-                self.assertIn("- [a/b](https://github.com/a/b) — Hi · Rust · ★ 2", written)
+                self.assertIn(
+                    "| [a/b](https://github.com/a/b) | Hi | "
+                    "![Rust](https://img.shields.io/badge/Rust-blue?style=flat-square&logoColor=white) | "
+                    "![Stars](https://img.shields.io/github/stars/a/b?style=flat-square) |",
+                    written,
+                )
                 self.assertNotIn("star-token", written)
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                     again = sync.main(["--output", str(path)])
