@@ -15,7 +15,6 @@ import re
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -400,49 +399,24 @@ def escape_table_cell(text: str) -> str:
     return flattened.replace("\\", "\\\\").replace("|", "\\|")
 
 
-def shields_badge_label(text: str) -> str:
-    """把徽章文案编码进 Shields 静态徽章路径。
-
-    Shields 用 ``-`` 分隔字段，并把 ``_`` 显示成空格。字面连字符写成 ``--``，
-    字面下划线写成 ``__``。``urllib.parse.quote`` 不会编码 ``-`` / ``_``，
-    所以这两类先改写，再对其余字符做百分号编码，这样 ``C++``、``C#``、
-    ``Objective-C`` 都能显示正确。
-    """
-    escaped = text.replace("_", "__").replace("-", "--")
-    return urllib.parse.quote(escaped, safe="")
-
-
-def language_badge(language: str | None) -> str:
+def language_cell(language: str | None) -> str:
     name = (language or "").strip()
     if not name:
         return "-"
-    alt = escape_table_cell(clean_inline(name)).replace("]", "\\]")
-    encoded = shields_badge_label(name)
-    return (
-        f"![{alt}](https://img.shields.io/badge/{encoded}-blue"
-        "?style=flat-square&logoColor=white)"
-    )
+    return escape_table_cell(clean_inline(name))
 
 
-def stars_badge(name_with_owner: str) -> str:
-    owner, sep, repo = name_with_owner.partition("/")
-    if not sep or not owner or not repo:
-        owner_q = "unknown"
-        repo_q = urllib.parse.quote(name_with_owner, safe="")
-    else:
-        owner_q = urllib.parse.quote(owner, safe="")
-        repo_q = urllib.parse.quote(repo, safe="")
-    return f"![Stars](https://img.shields.io/github/stars/{owner_q}/{repo_q}?style=flat-square)"
+def stars_cell(count: int | None) -> str:
+    return f"★ {int(count or 0):,}"
 
 
 def repo_row(repo: dict) -> str:
     name = escape_table_cell(clean_inline(repo.get("name_with_owner") or ""))
     url = repo.get("url") or ""
     description = escape_table_cell(truncate_text(repo.get("description") or ""))
-    return (
-        f"| [{name}]({url}) | {description} | {language_badge(repo.get('language'))} | "
-        f"{stars_badge(repo.get('name_with_owner') or '')} |"
-    )
+    language = language_cell(repo.get("language"))
+    stars = stars_cell(repo.get("stargazer_count"))
+    return f"| [{name}]({url}) | {description} | {language} | {stars} |"
 
 
 def render_repo_table(items: list[dict]) -> list[str]:
@@ -505,6 +479,7 @@ def render_readme(
                         "url": "https://github.com/owner/repo",
                         "description": "仓库简介",
                         "language": "Python",
+                        "stargazer_count": 1234,
                     }
                 ]
             )
