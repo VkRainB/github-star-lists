@@ -1,0 +1,53 @@
+# 每天北京时间约 08:17，用仓库所有者的 GitHub Star Lists 重写 README.md。
+# Daily refresh of README.md from the owner's GitHub Star Lists (~08:17 Asia/Shanghai).
+#
+# 必需 secret：STAR_LISTS_TOKEN
+#   - classic PAT，至少 read:user；或能读取 starred lists 的细粒度 PAT
+#   - 令牌必须属于列表所有者，因为脚本查询的是 viewer
+#   - 本仓库的 GITHUB_TOKEN 不能读取个人 User Lists，不能拿来同步
+name: Update Star Lists
+
+on:
+  schedule:
+    # 00:17 UTC = 08:17 Asia/Shanghai (UTC+8)
+    - cron: "17 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-star-lists
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run unit tests
+        run: python3 scripts/test_update_star_lists.py
+
+      - name: Regenerate README from Star Lists
+        env:
+          STAR_LISTS_TOKEN: ${{ secrets.STAR_LISTS_TOKEN }}
+        run: |
+          if [ -z "${STAR_LISTS_TOKEN}" ]; then
+            echo "::error::缺少 secret STAR_LISTS_TOKEN。请在 Settings → Secrets and variables → Actions 添加 classic PAT（至少 read:user），然后重新运行 workflow_dispatch。仓库 GITHUB_TOKEN 无法读取个人 Star Lists。"
+            exit 1
+          fi
+          python3 scripts/update_star_lists.py
+
+      - name: Commit and push if README changed
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: |
+            chore: 同步 GitHub Star Lists
+
+            - 根据 Star Lists 重新生成 README.md
+          file_pattern: README.md
+          commit_user_name: github-actions[bot]
+          commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
