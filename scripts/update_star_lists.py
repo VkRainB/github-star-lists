@@ -15,6 +15,7 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -393,18 +394,64 @@ def html_id(slug: str, used: dict[str, int]) -> str:
     return base if count == 0 else f"{base}-{count}"
 
 
-def repo_line(repo: dict) -> str:
-    name = repo["name_with_owner"]
-    url = repo["url"]
-    description = truncate_text(repo.get("description") or "")
-    suffix_parts = []
-    if repo.get("language"):
-        suffix_parts.append(clean_inline(repo["language"]))
-    suffix_parts.append(f"★ {int(repo.get('stargazer_count') or 0):,}")
-    suffix = " · ".join(suffix_parts)
-    if description:
-        return f"- [{name}]({url}) — {description} · {suffix}"
-    return f"- [{name}]({url}) · {suffix}"
+def escape_table_cell(text: str) -> str:
+    """让单元格里的 ``|``、反斜杠和换行不会拆开 Markdown 表格。"""
+    flattened = text.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
+    return flattened.replace("\\", "\\\\").replace("|", "\\|")
+
+
+def shields_badge_label(text: str) -> str:
+    """把徽章文案编码进 Shields 静态徽章路径。
+
+    Shields 用 ``-`` 分隔字段，并把 ``_`` 显示成空格。字面连字符写成 ``--``，
+    字面下划线写成 ``__``。``urllib.parse.quote`` 不会编码 ``-`` / ``_``，
+    所以这两类先改写，再对其余字符做百分号编码，这样 ``C++``、``C#``、
+    ``Objective-C`` 都能显示正确。
+    """
+    escaped = text.replace("_", "__").replace("-", "--")
+    return urllib.parse.quote(escaped, safe="")
+
+
+def language_badge(language: str | None) -> str:
+    name = (language or "").strip()
+    if not name:
+        return "-"
+    alt = escape_table_cell(clean_inline(name)).replace("]", "\\]")
+    encoded = shields_badge_label(name)
+    return (
+        f"![{alt}](https://img.shields.io/badge/{encoded}-blue"
+        "?style=flat-square&logoColor=white)"
+    )
+
+
+def stars_badge(name_with_owner: str) -> str:
+    owner, sep, repo = name_with_owner.partition("/")
+    if not sep or not owner or not repo:
+        owner_q = "unknown"
+        repo_q = urllib.parse.quote(name_with_owner, safe="")
+    else:
+        owner_q = urllib.parse.quote(owner, safe="")
+        repo_q = urllib.parse.quote(repo, safe="")
+    return f"![Stars](https://img.shields.io/github/stars/{owner_q}/{repo_q}?style=flat-square)"
+
+
+def repo_row(repo: dict) -> str:
+    name = escape_table_cell(clean_inline(repo.get("name_with_owner") or ""))
+    url = repo.get("url") or ""
+    description = escape_table_cell(truncate_text(repo.get("description") or ""))
+    return (
+        f"| [{name}]({url}) | {description} | {language_badge(repo.get('language'))} | "
+        f"{stars_badge(repo.get('name_with_owner') or '')} |"
+    )
+
+
+def render_repo_table(items: list[dict]) -> list[str]:
+    rows = [
+        "| 仓库 | 简介 | 语言 | Stars |",
+        "| --- | --- | --- | ---: |",
+    ]
+    rows.extend(repo_row(repo) for repo in items)
+    return rows
 
 
 def render_readme(
@@ -448,10 +495,21 @@ def render_readme(
                 "",
                 "同步成功后，每个 Star List 会成为一节，仓库条目形如：",
                 "",
-                "- [owner/repo](https://github.com/owner/repo) — 仓库简介 · Python · ★ 1,234",
-                "",
             ]
         )
+        lines.extend(
+            render_repo_table(
+                [
+                    {
+                        "name_with_owner": "owner/repo",
+                        "url": "https://github.com/owner/repo",
+                        "description": "仓库简介",
+                        "language": "Python",
+                    }
+                ]
+            )
+        )
+        lines.append("")
     else:
         used_ids: dict[str, int] = {}
         sections: list[tuple[str, dict]] = []
@@ -485,8 +543,7 @@ def render_readme(
                 lines.append(description)
                 lines.append("")
             if star_list["items"]:
-                for repo in star_list["items"]:
-                    lines.append(repo_line(repo))
+                lines.extend(render_repo_table(star_list["items"]))
                 lines.append("")
             else:
                 lines.append("（此列表暂无公开仓库 / No public repositories in this list.）")
