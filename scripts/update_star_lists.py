@@ -407,7 +407,7 @@ def language_cell(language: str | None) -> str:
 
 
 def stars_cell(count: int | None) -> str:
-    return f"★ {int(count or 0):,}"
+    return f"{int(count or 0):,}"
 
 
 def repo_row(repo: dict) -> str:
